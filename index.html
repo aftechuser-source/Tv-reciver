@@ -51,10 +51,14 @@
 var NS = 'urn:x-cast:com.tvcast.universalremote.webrtc';
 var video = document.getElementById('v');
 var st = document.getElementById('s');
-var VERSION = 'v6';   // bump on every change to this page
+var VERSION = 'v7';   // bump on every change to this page
 var splash = document.getElementById('splash');
-var errTimer = null;
-function showSplash(on, text, isError) { clearTimeout(errTimer); splash.className = on ? (isError ? 'err' : '') : 'off'; if (on) document.getElementById('sub').textContent = text || 'Waiting for your phone…'; }
+var errTimer = null, errUntil = 0;
+// An error message stays for 10 s: the stop/idle events that follow a failure must not wipe it. A new load or offer (force) replaces it.
+function showSplash(on, text, isError, force) {
+  if (!isError && !force && Date.now() < errUntil) return;
+  if (isError) errUntil = Date.now() + 10000; else errUntil = 0;
+  clearTimeout(errTimer); splash.className = on ? (isError ? 'err' : '') : 'off'; if (on) document.getElementById('sub').textContent = text || 'Waiting for your phone…'; }
 video.addEventListener('playing', function () { showSplash(false); });
 video.addEventListener('emptied', function () { showSplash(true); });
 document.getElementById('ver').textContent = 'ready ' + VERSION;
@@ -100,7 +104,7 @@ context.addCustomMessageListener(NS, function (evt) {
   var m = evt.data;
   if (!m || typeof m !== 'object') return;
   if (m.type === 'OFFER') {
-    showSplash(true, 'Connecting to your phone…');
+    showSplash(true, 'Connecting to your phone…', false, true);
     closePeer(); pc = makePeer();
     pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
       .then(function () { return pc.createAnswer(); })
@@ -116,8 +120,8 @@ context.addCustomMessageListener(NS, function (evt) {
 // Phone media (video / photo / audio / live): standard Cast playback; the branded screen shows while loading and when idle.
 try {
   var pm = context.getPlayerManager(), EV = cast.framework.events.EventType;
-  pm.addEventListener(EV.REQUEST_LOAD, function () { showSplash(true, 'Loading…'); });
-  [EV.PLAYER_LOAD_COMPLETE, EV.PLAYING].forEach(function (t) { pm.addEventListener(t, function () { showSplash(false); }); });
+  pm.addEventListener(EV.REQUEST_LOAD, function () { showSplash(true, 'Loading…', false, true); });
+  [EV.PLAYER_LOAD_COMPLETE, EV.PLAYING].forEach(function (t) { pm.addEventListener(t, function () { showSplash(false, '', false, true); }); });
   [EV.MEDIA_FINISHED, EV.REQUEST_STOP].forEach(function (t) { pm.addEventListener(t, function () { showSplash(true); }); });
   // Tell the viewer on the TV why nothing plays, then go back to the idle screen.
   var REASONS = { 104: 'This video format is not supported by this TV', 102: 'This video could not be decoded', 103: 'Network problem while loading', 100: 'Playback error', 301: 'Could not load this file', 311: 'Network problem while loading' };
@@ -125,7 +129,7 @@ try {
     var c = e && e.detailedErrorCode;
     showSplash(true, "Can't play this: " + (REASONS[c] || 'playback error') + (c ? ' (' + c + ')' : ''), true);
     log('media error ' + c);
-    errTimer = setTimeout(function () { showSplash(true); }, 8000);
+    errTimer = setTimeout(function () { errUntil = 0; showSplash(true); }, 10000);
   });
 } catch (x) { status('player hookup failed: ' + x); }
 
