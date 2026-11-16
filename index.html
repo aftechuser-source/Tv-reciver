@@ -16,6 +16,7 @@
 <video id="v" autoplay playsinline></video>
 <div id="s">TvCast receiver starting…</div>
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<script src="//www.gstatic.com/cast/sdk/libs/devtools/debug_layer/caf_receiver_logger.js"></script>
 <script>
 var NS = 'urn:x-cast:com.tvcast.universalremote.webrtc';
 var video = document.getElementById('v');
@@ -75,8 +76,41 @@ context.addCustomMessageListener(NS, function (evt) {
 });
 
 context.start(options);
-status('ready');
+status('ready v2');
 send({ type: 'READY' });
+
+// ---- Diagnostics: everything below reports to the phone (shows in logcat as "webrtc <- ... LOG/STATS") ----
+function log(msg) { send({ type: 'LOG', msg: String(msg) }); }
+window.addEventListener('error', function (e) { log('JS error: ' + e.message + ' @' + e.lineno); });
+window.addEventListener('unhandledrejection', function (e) { log('promise: ' + (e.reason && e.reason.message || e.reason)); });
+['error', 'stalled', 'waiting', 'emptied', 'abort'].forEach(function (n) {
+  video.addEventListener(n, function () { log('video ' + n + (video.error ? ' code=' + video.error.code + ' ' + (video.error.message || '') : '')); });
+});
+try {
+  var ET = cast.framework.system.EventType;
+  context.addEventListener(ET.SENDER_DISCONNECTED, function (e) { log('SENDER_DISCONNECTED reason=' + e.reason); });
+  context.addEventListener(ET.SHUTDOWN, function () { log('SHUTDOWN'); });
+  context.addEventListener(ET.ERROR, function (e) { log('CAF ERROR ' + JSON.stringify(e)); });
+} catch (x) { log('event hookup failed: ' + x); }
+try { if (cast.debug && cast.debug.CastDebugLogger) { var dl = cast.debug.CastDebugLogger.getInstance(); dl.setEnabled(true); dl.showDebugLogs(true); } } catch (x) {}
+
+setInterval(function () {
+  if (!pc) return;
+  pc.getStats().then(function (rep) {
+    var o = { type: 'STATS' };
+    rep.forEach(function (r) {
+      if (r.type === 'inbound-rtp' && r.kind === 'video') {
+        o.recv = r.framesReceived; o.dec = r.framesDecoded; o.drop = r.framesDropped; o.lost = r.packetsLost;
+        o.kbps = Math.round((r.bytesReceived || 0) / 1024); o.fps = r.framesPerSecond; o.w = r.frameWidth; o.h = r.frameHeight;
+        o.impl = r.decoderImplementation; o.freeze = r.freezeCount; o.key = r.keyFramesDecoded; o.pli = r.pliCount;
+        if (r.jitterBufferDelay && r.jitterBufferEmittedCount) o.jbMs = Math.round(r.jitterBufferDelay / r.jitterBufferEmittedCount * 1000);
+      }
+    });
+    try { if (performance.memory) { o.heapMB = Math.round(performance.memory.usedJSHeapSize / 1048576); o.heapMax = Math.round(performance.memory.jsHeapSizeLimit / 1048576); } } catch (x) {}
+    o.ready = video.readyState; o.t = Math.round(video.currentTime * 10) / 10;
+    send(o);
+  }).catch(function () {});
+}, 1000);
 </script>
 </body>
 </html>
