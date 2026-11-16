@@ -10,18 +10,50 @@
   video{width:100vw;height:100vh;object-fit:contain;background:#000}
   #s{position:fixed;left:12px;bottom:10px;font-size:13px;opacity:.6}
   #s.h{display:none}
+  #ver{position:fixed;right:12px;bottom:10px;font-size:12px;opacity:.45;z-index:5}
+  #s{z-index:5}
+  /* Branded idle screen: shown until the phone's picture starts, and again when mirroring ends. */
+  #splash{position:fixed;inset:0;z-index:3;display:flex;flex-direction:column;align-items:center;justify-content:center;
+    background:radial-gradient(ellipse at 50% 35%,#0a4fb3 0%,#06265c 55%,#020b1f 100%);transition:opacity .4s}
+  #splash.off{opacity:0;pointer-events:none}
+  #splash svg{width:22vh;height:22vh;filter:drop-shadow(0 1.5vh 3vh rgba(0,119,255,.55))}
+  #splash .name{margin-top:5vh;font-size:5.5vh;font-weight:700;letter-spacing:.1vh}
+  #splash .sub{margin-top:1.6vh;font-size:3vh;opacity:.75}
+  #splash .dots{margin-top:5vh;display:flex;gap:1.4vh}
+  #splash .dots i{width:1.4vh;height:1.4vh;border-radius:50%;background:#fff;opacity:.25;animation:b 1.2s infinite}
+  #splash .dots i:nth-child(2){animation-delay:.2s}#splash .dots i:nth-child(3){animation-delay:.4s}
+  @keyframes b{0%,100%{opacity:.25}50%{opacity:1}}
 </style>
 </head>
 <body>
 <video id="v" autoplay playsinline></video>
+<div id="splash">
+  <svg viewBox="0 0 134 134" xmlns="http://www.w3.org/2000/svg">
+    <path fill="#0077FF" d="M24,0L110,0A24,24 0 0 1 134,24L134,110A24,24 0 0 1 110,134L24,134A24,24 0 0 1 0,110L0,24A24,24 0 0 1 24,0Z"/>
+    <path fill="#fff" d="M103.9524,19L30.0476,19C24.9456,19 20.8095,23.1188 20.8095,28.1997L20.8095,74.467C20.8095,79.5479 24.9456,83.6666 30.0476,83.6666L44.8286,83.6666C57.3,83.6666 61.4571,83.6666 90.0952,83.6666L103.9524,83.6666C109.0546,83.6666 113.1905,79.5479 113.1905,74.467L113.1905,28.1997C113.1905,23.1188 109.0546,19 103.9524,19Z"/>
+    <path fill="#fff" stroke="#0077FF" stroke-width="5.54286" d="M57.7619,51.3334C52.6599,51.3334 48.5238,55.4695 48.5238,60.5714L48.5238,106.762C48.5238,111.8641 52.6599,116 57.7619,116L77.1619,116C82.2639,116 86.4,111.8641 86.4,106.762L86.4,60.5714C86.4,55.4695 82.2639,51.3334 77.1619,51.3334L57.7619,51.3334Z"/>
+    <path fill="#0077FF" d="M61.4572,106.762C60.4367,106.762 59.6095,107.5891 59.6095,108.6096C59.6095,109.63 60.4367,110.4572 61.4572,110.4572L73.3558,110.4572C74.3762,110.4572 75.2034,109.63 75.2034,108.6096C75.2034,107.5891 74.3762,106.762 73.3558,106.762L61.4572,106.762Z"/>
+    <path fill="#0077FF" d="M74.1537,83.7758L64.8096,88.9247C63.3055,89.7535 61.4571,88.6747 61.4571,86.968L61.4571,76.67C61.4571,74.9634 63.3055,73.8846 64.8096,74.7135L74.1537,79.8624C75.7011,80.7153 75.7011,82.9229 74.1537,83.7758Z"/>
+    <path fill="none" stroke="#0077FF" stroke-width="4.61905" stroke-linecap="round" d="M59.1346,42.0717C60.2104,40.9181 61.5113,39.9969 62.9569,39.3654C64.4025,38.7339 65.9609,38.4055 67.5386,38.3999C69.116,38.3947 70.6777,38.7124 72.1278,39.334C73.5777,39.9554 74.8854,40.8672 75.9692,42.0134M54.0667,35.0371C55.7881,33.191 57.8694,31.7174 60.1824,30.7069C62.4953,29.6964 64.9925,29.1708 67.5166,29.162C70.0407,29.1532 72.5384,29.6619 74.8586,30.6561C77.1785,31.6504 79.2689,33.1074 81.0033,34.9414"/>
+  </svg>
+  <div class="name">Cast to TV</div>
+  <div class="sub" id="sub">Waiting for your phone…</div>
+  <div class="dots"><i></i><i></i><i></i></div>
+</div>
 <div id="s">TvCast receiver starting…</div>
+<div id="ver"></div>
 <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
-<script src="//www.gstatic.com/cast/sdk/libs/devtools/debug_layer/caf_receiver_logger.js"></script>
 <script>
 var NS = 'urn:x-cast:com.tvcast.universalremote.webrtc';
 var video = document.getElementById('v');
 var st = document.getElementById('s');
-function status(t) { st.textContent = t; }
+var VERSION = 'v4';   // bump on every change to this page
+var splash = document.getElementById('splash');
+function showSplash(on, text) { splash.className = on ? '' : 'off'; if (on) document.getElementById('sub').textContent = text || 'Waiting for your phone…'; }
+video.addEventListener('playing', function () { showSplash(false); });
+video.addEventListener('emptied', function () { showSplash(true); });
+document.getElementById('ver').textContent = 'ready ' + VERSION;
+function status(t) { st.textContent = t + ' [' + VERSION + ']'; }
 window.addEventListener('error', function (e) { status('JS: ' + e.message); });
 window.addEventListener('unhandledrejection', function (e) { status('JS promise: ' + (e.reason && e.reason.message || e.reason)); });
 
@@ -63,6 +95,7 @@ context.addCustomMessageListener(NS, function (evt) {
   var m = evt.data;
   if (!m || typeof m !== 'object') return;
   if (m.type === 'OFFER') {
+    showSplash(true, 'Connecting to your phone…');
     closePeer(); pc = makePeer();
     pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
       .then(function () { return pc.createAnswer(); })
@@ -71,12 +104,12 @@ context.addCustomMessageListener(NS, function (evt) {
   } else if (m.type === 'ICE' && m.candidate && m.candidate.candidate && pc) {
     pc.addIceCandidate({ candidate: m.candidate.candidate, sdpMid: m.candidate.sdpMid, sdpMLineIndex: m.candidate.sdpMLineIndex }).catch(function () {});
   } else if (m.type === 'BYE') {
-    status('ended'); st.className = ''; closePeer();
+    status('ended'); st.className = ''; closePeer(); showSplash(true);
   }
 });
 
 context.start(options);
-status('ready v2');
+status('ready');
 send({ type: 'READY' });
 
 // ---- Diagnostics: everything below reports to the phone (shows in logcat as "webrtc <- ... LOG/STATS") ----
@@ -92,7 +125,6 @@ try {
   context.addEventListener(ET.SHUTDOWN, function () { log('SHUTDOWN'); });
   context.addEventListener(ET.ERROR, function (e) { log('CAF ERROR ' + JSON.stringify(e)); });
 } catch (x) { log('event hookup failed: ' + x); }
-try { if (cast.debug && cast.debug.CastDebugLogger) { var dl = cast.debug.CastDebugLogger.getInstance(); dl.setEnabled(true); dl.showDebugLogs(true); } } catch (x) {}
 
 setInterval(function () {
   if (!pc) return;
