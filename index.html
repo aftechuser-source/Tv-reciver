@@ -1,0 +1,82 @@
+<!doctype html>
+<!-- TvCast low-latency receiver. Signaling flow adapted from ddagunts/ScreenCast (Apache-2.0), see NOTICE-WEBRTC.md.
+     Host this file over HTTPS and register its URL for the Cast App ID in the Google Cast SDK Developer Console. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>TvCast receiver</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;overflow:hidden;color:#fff;font-family:sans-serif}
+  video{width:100vw;height:100vh;object-fit:contain;background:#000}
+  #s{position:fixed;left:12px;bottom:10px;font-size:13px;opacity:.6}
+  #s.h{display:none}
+</style>
+</head>
+<body>
+<video id="v" autoplay playsinline></video>
+<div id="s">TvCast receiver starting…</div>
+<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<script>
+var NS = 'urn:x-cast:com.tvcast.universalremote.webrtc';
+var video = document.getElementById('v');
+var st = document.getElementById('s');
+function status(t) { st.textContent = t; }
+window.addEventListener('error', function (e) { status('JS: ' + e.message); });
+window.addEventListener('unhandledrejection', function (e) { status('JS promise: ' + (e.reason && e.reason.message || e.reason)); });
+
+var context = cast.framework.CastReceiverContext.getInstance();
+var options = new cast.framework.CastReceiverOptions();
+options.disableIdleTimeout = true;           // we never use CAF media, so CAF would think we are idle
+options.maxInactivity = 24 * 60 * 60;
+options.skipPlayersLoad = true;              // no media players needed: lighter page, less memory on the TV
+options.customNamespaces = {};
+options.customNamespaces[NS] = cast.framework.system.MessageType.JSON;
+
+var senderId = null, pc = null;
+function send(o) { try { context.sendCustomMessage(NS, senderId, o); } catch (e) {} }
+function closePeer() { if (pc) { try { pc.close(); } catch (e) {} pc = null; } }
+
+function makePeer() {
+  var p = new RTCPeerConnection({ iceServers: [] });
+  var stream = new MediaStream();
+  video.srcObject = stream;
+  p.ontrack = function (e) {
+    stream.addTrack(e.track);
+    // Lowest playout delay the browser allows (ignored where unsupported).
+    try { if ('playoutDelayHint' in e.receiver) e.receiver.playoutDelayHint = 0; } catch (x) {}
+    try { if ('jitterBufferTarget' in e.receiver) e.receiver.jitterBufferTarget = 0; } catch (x) {}
+    var pr = video.play(); if (pr && pr.catch) pr.catch(function (x) { status('play failed: ' + x); });
+  };
+  p.onicecandidate = function (e) {
+    if (e.candidate) send({ type: 'ICE', candidate: { candidate: e.candidate.candidate, sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex } });
+  };
+  p.onconnectionstatechange = function () {
+    if (p.connectionState === 'connected') st.className = 'h';
+    else { st.className = ''; status('connection: ' + p.connectionState); }
+  };
+  return p;
+}
+
+context.addCustomMessageListener(NS, function (evt) {
+  senderId = evt.senderId || senderId;
+  var m = evt.data;
+  if (!m || typeof m !== 'object') return;
+  if (m.type === 'OFFER') {
+    closePeer(); pc = makePeer();
+    pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
+      .then(function () { return pc.createAnswer(); })
+      .then(function (a) { return pc.setLocalDescription(a).then(function () { send({ type: 'ANSWER', sdp: a.sdp }); }); })
+      .catch(function (err) { status('offer failed: ' + err); });
+  } else if (m.type === 'ICE' && m.candidate && m.candidate.candidate && pc) {
+    pc.addIceCandidate({ candidate: m.candidate.candidate, sdpMid: m.candidate.sdpMid, sdpMLineIndex: m.candidate.sdpMLineIndex }).catch(function () {});
+  } else if (m.type === 'BYE') {
+    status('ended'); st.className = ''; closePeer();
+  }
+});
+
+context.start(options);
+status('ready');
+send({ type: 'READY' });
+</script>
+</body>
+</html>
